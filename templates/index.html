@@ -395,6 +395,7 @@
     <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/clike/clike.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     
     <script>
         // Init Editor
@@ -454,36 +455,89 @@
             });
         };
 
-        const renderASTText = (node, depth=0) => {
-            if(!node) return '';
-            let html = `<div class="ast-node">`;
-            
-            if(node.type) {
-                html += `<span class="ast-val-keyword">${node.type}</span> `;
+        const convertToD3Hierarchy = (node) => {
+            if (!node) return null;
+            if (Array.isArray(node)) {
+                return { name: "[]", children: node.map(n => convertToD3Hierarchy(n)).filter(Boolean) };
+            }
+            if (typeof node !== 'object') {
+                return { name: String(node) };
             }
             
-            for(let key in node) {
-                if(key === 'type') continue;
-                html += `<div><span class="ast-key">${key}:</span> `;
-                const val = node[key];
-                if(Array.isArray(val)) {
-                    html += `[`;
-                    val.forEach(v => html += renderASTText(v, depth+1));
-                    html += `]</div>`;
-                } else if(typeof val === 'object' && val !== null) {
-                    html += renderASTText(val, depth+1) + `</div>`;
+            let name = node.type || "Node";
+            let children = [];
+            
+            for (let key in node) {
+                if (key === 'type') continue;
+                let val = node[key];
+                if (Array.isArray(val)) {
+                    let childGroup = { name: key, children: val.map(v => convertToD3Hierarchy(v)).filter(Boolean) };
+                    if(childGroup.children.length > 0) children.push(childGroup);
+                } else if (typeof val === 'object' && val !== null) {
+                    children.push(convertToD3Hierarchy(val));
                 } else {
-                    let vclass = typeof val === 'number' ? 'ast-val-number' : 'ast-val-string';
-                    html += `<span class="${vclass}">${val}</span></div>`;
+                    children.push({ name: `${key}: ${val}` });
                 }
             }
-            html += `</div>`;
-            return html;
+            return { name, children };
         };
 
         const renderParser = (ast) => {
             const container = document.getElementById('tab-parser');
-            container.innerHTML = `<div class="ast-tree">${renderASTText(ast)}</div>`;
+            container.innerHTML = '<div id="d3-tree" style="width:100%; height:100%; min-height:500px; display:flex; justify-content:center;"></div>';
+            
+            const treeData = convertToD3Hierarchy(ast);
+            if(!treeData) return;
+            
+            const margin = {top: 50, right: 50, bottom: 50, left: 50},
+                  width = 1200 - margin.left - margin.right,
+                  height = 800 - margin.top - margin.bottom;
+            
+            const svg = d3.select("#d3-tree").append("svg")
+                .attr("width", "100%")
+                .attr("height", "100%")
+                .attr("viewBox", `0 0 1200 800`)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+                
+            const treemap = d3.tree().size([width, height]);
+            let nodes = d3.hierarchy(treeData, d => d.children);
+            nodes = treemap(nodes);
+            
+            const link = svg.selectAll(".link")
+                .data(nodes.descendants().slice(1))
+                .enter().append("path")
+                .attr("class", "link")
+                .style("stroke", "var(--border-color)")
+                .style("fill", "none")
+                .style("stroke-width", "2px")
+                .attr("d", d => {
+                   return "M" + d.x + "," + d.y
+                     + "C" + d.x + "," + (d.y + d.parent.y) / 2
+                     + " " + d.parent.x + "," +  (d.y + d.parent.y) / 2
+                     + " " + d.parent.x + "," + d.parent.y;
+                   });
+                   
+            const node = svg.selectAll(".node")
+                .data(nodes.descendants())
+                .enter().append("g")
+                .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
+                .attr("transform", d => "translate(" + d.x + "," + d.y + ")");
+                
+            node.append("circle")
+                .attr("r", 6)
+                .style("fill", d => d.children ? "var(--accent-color)" : "var(--surface-color)")
+                .style("stroke", "var(--accent-color)")
+                .style("stroke-width", "2px");
+                
+            node.append("text")
+                .attr("dy", ".35em")
+                .attr("y", d => d.children ? -15 : 15)
+                .style("text-anchor", "middle")
+                .style("fill", "var(--text-primary)")
+                .style("font-family", "'JetBrains Mono', monospace")
+                .style("font-size", "12px")
+                .text(d => d.data.name);
         };
 
         const renderSemantic = (data) => {
