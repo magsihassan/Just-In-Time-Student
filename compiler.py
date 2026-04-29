@@ -91,11 +91,14 @@ class Parser:
     def parse_program(self):
         statements = []
         while self.current()['type'] != 'EOF':
+            prev_pos = self.pos
             try:
                 statements.append(self.parse_statement())
             except CompileError as e:
                 self.errors.append(str(e))
                 self.synchronize()
+            if self.pos == prev_pos:
+                self.pos += 1
         return {'type': 'Program', 'body': [s for s in statements if s]}
 
     def synchronize(self):
@@ -223,10 +226,19 @@ class Parser:
     def parse_block(self):
         self.consume('DELIMITER', '{')
         statements = []
-        while self.current()['value'] != '}':
-            statements.append(self.parse_statement())
-        self.consume('DELIMITER', '}')
-        return {'type': 'Block', 'statements': statements}
+        while self.current()['value'] != '}' and self.current()['type'] != 'EOF':
+            prev_pos = self.pos
+            try:
+                statements.append(self.parse_statement())
+            except CompileError as e:
+                self.errors.append(str(e))
+                self.synchronize()
+            if self.pos == prev_pos:
+                self.pos += 1
+        
+        if self.current()['value'] == '}':
+            self.consume('DELIMITER', '}')
+        return {'type': 'Block', 'statements': [s for s in statements if s]}
 
     def parse_expr(self):
         return self.parse_comparison()
