@@ -127,9 +127,10 @@ class Parser:
             if next_tok and next_tok['value'] == '=':
                 return self.parse_assignment()
             else:
+                line = self.current()['line']
                 expr = self.parse_expr()
                 self.consume('DELIMITER', ';')
-                return {'type': 'ExprStmt', 'expr': expr}
+                return {'type': 'ExprStmt', 'line': line, 'expr': expr}
         elif tok['value'] == 'if':
             return self.parse_if()
         elif tok['value'] == 'while':
@@ -142,6 +143,7 @@ class Parser:
             raise CompileError(f"Syntax Error: Unexpected token '{tok['value']}' at line {tok['line']}")
 
     def parse_var_decl(self):
+        line = self.current()['line']
         vtype = self.consume('KEYWORD')['value']
         name = self.consume('IDENTIFIER')['value']
         init = None
@@ -149,9 +151,10 @@ class Parser:
             self.consume('OPERATOR', '=')
             init = self.parse_expr()
         self.consume('DELIMITER', ';')
-        return {'type': 'VarDecl', 'varType': vtype, 'name': name, 'init': init}
+        return {'type': 'VarDecl', 'line': line, 'varType': vtype, 'name': name, 'init': init}
 
     def parse_func_decl(self):
+        line = self.current()['line']
         rtype = self.consume('KEYWORD')['value']
         name = self.consume('IDENTIFIER')['value']
         self.consume('DELIMITER', '(')
@@ -167,16 +170,18 @@ class Parser:
                 params.append({'type': ptype, 'name': pname})
         self.consume('DELIMITER', ')')
         body = self.parse_block()
-        return {'type': 'FuncDecl', 'returnType': rtype, 'name': name, 'params': params, 'body': body}
+        return {'type': 'FuncDecl', 'line': line, 'returnType': rtype, 'name': name, 'params': params, 'body': body}
 
     def parse_assignment(self):
+        line = self.current()['line']
         name = self.consume('IDENTIFIER')['value']
         self.consume('OPERATOR', '=')
         expr = self.parse_expr()
         self.consume('DELIMITER', ';')
-        return {'type': 'Assignment', 'name': name, 'expr': expr}
+        return {'type': 'Assignment', 'line': line, 'name': name, 'expr': expr}
 
     def parse_if(self):
+        line = self.current()['line']
         self.consume('KEYWORD', 'if')
         self.consume('DELIMITER', '(')
         cond = self.parse_expr()
@@ -186,31 +191,34 @@ class Parser:
         if self.current()['value'] == 'else':
             self.consume('KEYWORD', 'else')
             else_branch = self.parse_block()
-        return {'type': 'IfStmt', 'condition': cond, 'then': then_branch, 'else': else_branch}
+        return {'type': 'IfStmt', 'line': line, 'condition': cond, 'then': then_branch, 'else': else_branch}
 
     def parse_while(self):
+        line = self.current()['line']
         self.consume('KEYWORD', 'while')
         self.consume('DELIMITER', '(')
         cond = self.parse_expr()
         self.consume('DELIMITER', ')')
         body = self.parse_block()
-        return {'type': 'WhileStmt', 'condition': cond, 'body': body}
+        return {'type': 'WhileStmt', 'line': line, 'condition': cond, 'body': body}
 
     def parse_return(self):
+        line = self.current()['line']
         self.consume('KEYWORD', 'return')
         expr = None
         if self.current()['value'] != ';':
             expr = self.parse_expr()
         self.consume('DELIMITER', ';')
-        return {'type': 'ReturnStmt', 'expr': expr}
+        return {'type': 'ReturnStmt', 'line': line, 'expr': expr}
 
     def parse_print(self):
+        line = self.current()['line']
         self.consume('KEYWORD', 'print')
         self.consume('DELIMITER', '(')
         expr = self.parse_expr()
         self.consume('DELIMITER', ')')
         self.consume('DELIMITER', ';')
-        return {'type': 'PrintStmt', 'expr': expr}
+        return {'type': 'PrintStmt', 'line': line, 'expr': expr}
 
     def parse_block(self):
         self.consume('DELIMITER', '{')
@@ -669,7 +677,20 @@ class Interpreter:
         self.env_stack = [self.global_env]
         self.functions = {}
         self.output = []
+        self.trace = []
         self.return_value = None
+
+    def record_state(self, node):
+        if not node or 'line' not in node: return
+        env_snapshot = {}
+        for env in self.env_stack:
+            for k, v in env.items():
+                env_snapshot[k] = str(v) if v is not None else "null"
+        self.trace.append({
+            'line': node['line'],
+            'env': env_snapshot,
+            'output': list(self.output)
+        })
 
     def execute(self):
         if not self.ast or self.ast['type'] != 'Program':
@@ -711,6 +732,8 @@ class Interpreter:
 
     def execute_node(self, node):
         if not node: return None
+        if node['type'] in ('VarDecl', 'Assignment', 'IfStmt', 'WhileStmt', 'ReturnStmt', 'PrintStmt', 'ExprStmt'):
+            self.record_state(node)
         method_name = f"exec_{node['type']}"
         method = getattr(self, method_name, None)
         if method:
@@ -857,7 +880,7 @@ def compile_code(source_code):
         if not result['errors']:
             interpreter = Interpreter(ast)
             output, ret_val = interpreter.execute()
-            result['execution'] = {'output': output, 'return_value': ret_val}
+            result['execution'] = {'output': output, 'return_value': ret_val, 'trace': interpreter.trace}
             
         result['success'] = len(result['errors']) == 0
         

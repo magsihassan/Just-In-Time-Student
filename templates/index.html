@@ -325,6 +325,21 @@
 
         /* SVG AST Tree */
         #svg-container { width: 100%; height: 100%; min-height: 400px; overflow: auto; background: var(--surface-color); border-radius: 8px; }
+
+        /* Debugger UI */
+        .debugger-container { display: flex; flex-direction: column; height: 100%; gap: 1rem; }
+        .debugger-toolbar { display: flex; gap: 1rem; align-items: center; background: var(--surface-color); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); }
+        .debugger-toolbar button { background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+        .debugger-toolbar button:hover:not(:disabled) { border-color: var(--accent-color); color: var(--accent-color); }
+        .debugger-toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #dbg-step-counter { margin-left: auto; color: var(--text-secondary); font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+        .debugger-panels { display: flex; gap: 1rem; flex: 1; min-height: 0; }
+        .dbg-panel { flex: 1; background: black; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; }
+        .dbg-panel h3 { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; margin-bottom: 1rem; flex-shrink: 0; }
+        #dbg-sym-table, #dbg-console-output { flex: 1; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+        #dbg-console-output { color: #4ade80; }
+        .dbg-var-row { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid #333; }
+        .active-line-highlight { background-color: rgba(108, 99, 255, 0.3) !important; }
     </style>
 </head>
 <body>
@@ -388,7 +403,26 @@
             </div>
 
             <div id="tab-exec" class="tab-content">
-                <div class="empty-state">Click Compile to execute program</div>
+                <div class="debugger-container" id="debugger-container" style="display:none;">
+                    <div class="debugger-toolbar">
+                        <button id="btn-reset-dbg" disabled>⏮ Reset</button>
+                        <button id="btn-prev-dbg" disabled>◀ Prev Step</button>
+                        <button id="btn-next-dbg" disabled>Next Step ▶</button>
+                        <span id="dbg-step-counter">Step 0 / 0</span>
+                    </div>
+                    <div class="debugger-panels">
+                        <div class="dbg-panel dbg-symbols">
+                            <h3>Live Symbol Table</h3>
+                            <div id="dbg-sym-table"></div>
+                        </div>
+                        <div class="dbg-panel dbg-console">
+                            <h3>Console Output</h3>
+                            <div id="dbg-console-output"></div>
+                            <div id="dbg-exit-status"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="exec-empty" class="empty-state">Click Compile to execute program</div>
             </div>
         </div>
     </main>
@@ -624,25 +658,88 @@
             container.innerHTML = html;
         };
 
-        const renderExecution = (data) => {
-            const container = document.getElementById('tab-exec');
-            let html = `<div style="background: black; padding: 1.5rem; border-radius: 8px; font-family: 'JetBrains Mono', monospace; color: #4ade80; height: 100%; border: 1px solid var(--border-color);">`;
-            html += `<h3 style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 12px; text-transform: uppercase;">Console Output</h3>`;
+        let currentTrace = [];
+        let currentStepIndex = -1;
+        let activeLineHandle = null;
+
+        const updateDebuggerUI = () => {
+            const btnPrev = document.getElementById('btn-prev-dbg');
+            const btnNext = document.getElementById('btn-next-dbg');
+            const btnReset = document.getElementById('btn-reset-dbg');
             
-            if(data && data.output && data.output.length > 0) {
-                data.output.forEach(line => {
-                    html += `<div>> ${line}</div>`;
-                });
-            } else {
-                html += `<div style="color: var(--text-secondary);">> (No print output)</div>`;
+            btnPrev.disabled = currentStepIndex <= 0;
+            btnNext.disabled = currentStepIndex >= currentTrace.length - 1;
+            btnReset.disabled = currentStepIndex < 0;
+            
+            document.getElementById('dbg-step-counter').innerText = `Step ${Math.max(0, currentStepIndex + 1)} / ${currentTrace.length}`;
+            
+            if (activeLineHandle !== null) {
+                editor.removeLineClass(activeLineHandle, 'background', 'active-line-highlight');
+                activeLineHandle = null;
             }
             
-            html += `<br><div style="color: var(--accent-color); border-top: 1px dashed var(--border-color); padding-top: 1rem; margin-top: 1rem;">`;
-            html += `[Program exited with return value: <strong>${data ? data.return_value : 'null'}</strong>]`;
-            html += `</div></div>`;
+            let env = {};
+            let output = [];
             
-            container.innerHTML = html;
+            if (currentStepIndex >= 0 && currentTrace[currentStepIndex]) {
+                const step = currentTrace[currentStepIndex];
+                env = step.env || {};
+                output = step.output || [];
+                if (step.line && step.line > 0) {
+                    activeLineHandle = step.line - 1; // 0-indexed in codemirror
+                    editor.addLineClass(activeLineHandle, 'background', 'active-line-highlight');
+                }
+            }
+            
+            let symHtml = '';
+            for (const [k, v] of Object.entries(env)) {
+                symHtml += `<div class="dbg-var-row"><span style="color:#e06c75;">${k}</span><span style="color:#61afef;">${v}</span></div>`;
+            }
+            if(Object.keys(env).length === 0) symHtml = '<div style="color:#666">No variables in scope</div>';
+            document.getElementById('dbg-sym-table').innerHTML = symHtml;
+            
+            let conHtml = '';
+            output.forEach(l => { conHtml += `<div>> ${l}</div>`; });
+            if(output.length === 0) conHtml = '<div style="color:#666">> (No output yet)</div>';
+            document.getElementById('dbg-console-output').innerHTML = conHtml;
         };
+
+        const renderExecution = (data) => {
+            const empty = document.getElementById('exec-empty');
+            const dbg = document.getElementById('debugger-container');
+            
+            if(!data) {
+                empty.style.display = 'flex';
+                dbg.style.display = 'none';
+                return;
+            }
+            
+            empty.style.display = 'none';
+            dbg.style.display = 'flex';
+            
+            currentTrace = data.trace || [];
+            currentStepIndex = -1;
+            document.getElementById('dbg-exit-status').innerHTML = `<br><div style="color: var(--accent-color); border-top: 1px dashed var(--border-color); padding-top: 1rem; margin-top: 1rem;">[Program exited with return value: <strong>${data.return_value !== null ? data.return_value : 'null'}</strong>]</div>`;
+            
+            updateDebuggerUI();
+        };
+
+        document.getElementById('btn-next-dbg').addEventListener('click', () => {
+            if (currentStepIndex < currentTrace.length - 1) {
+                currentStepIndex++;
+                updateDebuggerUI();
+            }
+        });
+        document.getElementById('btn-prev-dbg').addEventListener('click', () => {
+            if (currentStepIndex >= 0) {
+                currentStepIndex--;
+                updateDebuggerUI();
+            }
+        });
+        document.getElementById('btn-reset-dbg').addEventListener('click', () => {
+            currentStepIndex = -1;
+            updateDebuggerUI();
+        });
 
         // Compile
         document.getElementById('runBtn').addEventListener('click', async () => {
