@@ -13,7 +13,8 @@ class Lexer:
         self.line = 1
         self.col = 1
 
-        self.keywords = {'int', 'float', 'string', 'void', 'if', 'else', 'while', 'return'}
+        self.keywords = {'int', 'float', 'string', 'void', 'if', 'else', 'while', 'return', 'print'}
+        self.errors = []
         
         # Regex patterns
         self.rules = [
@@ -56,7 +57,9 @@ class Lexer:
                     break
             
             if not match:
-                raise CompileError(f"Lexical Error at line {self.line}, col {self.col}: Unexpected character '{self.source[self.pos]}'")
+                self.errors.append(f"Lexical Error at line {self.line}, col {self.col}: Unexpected character '{self.source[self.pos]}'")
+                self.pos += 1
+                self.col += 1
         
         self.tokens.append({'type': 'EOF', 'value': '', 'line': self.line, 'col': self.col})
         return self.tokens
@@ -66,6 +69,7 @@ class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.pos = 0
+        self.errors = []
 
     def current(self):
         if self.pos < len(self.tokens):
@@ -87,8 +91,24 @@ class Parser:
     def parse_program(self):
         statements = []
         while self.current()['type'] != 'EOF':
-            statements.append(self.parse_statement())
-        return {'type': 'Program', 'body': statements}
+            try:
+                statements.append(self.parse_statement())
+            except CompileError as e:
+                self.errors.append(str(e))
+                self.synchronize()
+        return {'type': 'Program', 'body': [s for s in statements if s]}
+
+    def synchronize(self):
+        # Skip until we find a statement boundary
+        while self.current()['type'] != 'EOF':
+            if self.current()['value'] in (';', '}'):
+                if self.current()['value'] == ';':
+                    self.pos += 1 # Consume semicolon
+                break
+            # Or if we see a keyword that starts a statement
+            if self.current()['value'] in ('int', 'float', 'string', 'void', 'if', 'while', 'return', 'print'):
+                break
+            self.pos += 1
 
     def parse_statement(self):
         tok = self.current()
@@ -116,6 +136,8 @@ class Parser:
             return self.parse_while()
         elif tok['value'] == 'return':
             return self.parse_return()
+        elif tok['value'] == 'print':
+            return self.parse_print()
         else:
             raise CompileError(f"Syntax Error: Unexpected token '{tok['value']}' at line {tok['line']}")
 
@@ -181,6 +203,14 @@ class Parser:
             expr = self.parse_expr()
         self.consume('DELIMITER', ';')
         return {'type': 'ReturnStmt', 'expr': expr}
+
+    def parse_print(self):
+        self.consume('KEYWORD', 'print')
+        self.consume('DELIMITER', '(')
+        expr = self.parse_expr()
+        self.consume('DELIMITER', ')')
+        self.consume('DELIMITER', ';')
+        return {'type': 'PrintStmt', 'expr': expr}
 
     def parse_block(self):
         self.consume('DELIMITER', '{')
@@ -352,6 +382,9 @@ class SemanticAnalyzer:
         if self.current_func_rtype and rtype != self.current_func_rtype:
             self.errors.append(f"Semantic Error: Return type mismatch, expected {self.current_func_rtype} got {rtype}")
 
+    def visit_PrintStmt(self, node):
+        self.visit(node['expr'])
+
     def visit_BinaryOp(self, node):
         left_type = self.visit(node['left'])
         right_type = self.visit(node['right'])
@@ -473,6 +506,10 @@ class ICGGenerator:
         else:
             self.emit("return")
 
+    def visit_PrintStmt(self, node):
+        val = self.visit(node['expr'])
+        self.emit(f"print {val}")
+
     def visit_BinaryOp(self, node):
         left = self.visit(node['left'])
         right = self.visit(node['right'])
@@ -592,6 +629,10 @@ class CodeGenerator:
                 self.asm.append("    RET")
             elif instr.startswith('return'):
                 self.asm.append("    RET")
+            elif instr.startswith('print '):
+                self.asm.append(f"    PUSH {parts[1]}")
+                self.asm.append(f"    CALL print")
+                self.asm.append(f"    POP R1")
             elif instr.startswith('push_param '):
                 self.asm.append(f"    PUSH {parts[1]}")
             elif instr.startswith('pop_param '):
@@ -616,6 +657,156 @@ class CodeGenerator:
                     self.asm.append(f"    MOV {left}, R0")
         return self.asm
 
+# --- Direct Execution (Interpreter) ---
+class ReturnException(Exception):
+    def __init__(self, value):
+        self.value = value
+
+class Interpreter:
+    def __init__(self, ast):
+        self.ast = ast
+        self.global_env = {}
+        self.env_stack = [self.global_env]
+        self.functions = {}
+        self.output = []
+        self.return_value = None
+
+    def execute(self):
+        if not self.ast or self.ast['type'] != 'Program':
+            return self.output, None
+            
+        for stmt in self.ast['body']:
+            if stmt['type'] == 'FuncDecl':
+                self.functions[stmt['name']] = stmt
+            elif stmt['type'] == 'VarDecl':
+                self.execute_node(stmt)
+
+        if 'main' in self.functions:
+            try:
+                self.return_value = self.call_function('main', [])
+            except Exception as e:
+                self.output.append(f"Runtime Error: {str(e)}")
+        
+        return self.output, self.return_value
+
+    def call_function(self, name, args):
+        func = self.functions.get(name)
+        if not func:
+            raise Exception(f"Function {name} not found")
+            
+        new_env = {}
+        for i, param in enumerate(func['params']):
+            new_env[param['name']] = args[i] if i < len(args) else None
+            
+        self.env_stack.append(new_env)
+        
+        try:
+            self.execute_node(func['body'])
+        except ReturnException as e:
+            self.env_stack.pop()
+            return e.value
+            
+        self.env_stack.pop()
+        return None
+
+    def execute_node(self, node):
+        if not node: return None
+        method_name = f"exec_{node['type']}"
+        method = getattr(self, method_name, None)
+        if method:
+            return method(node)
+        else:
+            raise Exception(f"Interpreter error: No executor for {node['type']}")
+
+    def lookup(self, name):
+        for env in reversed(self.env_stack):
+            if name in env:
+                return env[name]
+        if name in self.global_env:
+            return self.global_env[name]
+        raise Exception(f"Undefined variable {name}")
+
+    def assign(self, name, value):
+        for env in reversed(self.env_stack):
+            if name in env:
+                env[name] = value
+                return
+        if name in self.global_env:
+            self.global_env[name] = value
+            return
+        raise Exception(f"Undefined variable {name}")
+
+    def exec_Block(self, node):
+        for stmt in node['statements']:
+            self.execute_node(stmt)
+
+    def exec_VarDecl(self, node):
+        val = None
+        if node['init']:
+            val = self.execute_node(node['init'])
+        self.env_stack[-1][node['name']] = val
+
+    def exec_Assignment(self, node):
+        val = self.execute_node(node['expr'])
+        self.assign(node['name'], val)
+
+    def exec_IfStmt(self, node):
+        cond = self.execute_node(node['condition'])
+        if cond:
+            self.execute_node(node['then'])
+        elif node['else']:
+            self.execute_node(node['else'])
+
+    def exec_WhileStmt(self, node):
+        while self.execute_node(node['condition']):
+            self.execute_node(node['body'])
+
+    def exec_PrintStmt(self, node):
+        val = self.execute_node(node['expr'])
+        self.output.append(str(val))
+
+    def exec_ReturnStmt(self, node):
+        val = None
+        if node['expr']:
+            val = self.execute_node(node['expr'])
+        raise ReturnException(val)
+
+    def exec_ExprStmt(self, node):
+        self.execute_node(node['expr'])
+
+    def exec_BinaryOp(self, node):
+        left = self.execute_node(node['left'])
+        right = self.execute_node(node['right'])
+        op = node['operator']
+        if op == '+': return left + right
+        if op == '-': return left - right
+        if op == '*': return left * right
+        if op == '/': return left / right if right != 0 else 0
+        if op == '%': return left % right if right != 0 else 0
+        if op == '==': return left == right
+        if op == '!=': return left != right
+        if op == '<': return left < right
+        if op == '>': return left > right
+        if op == '<=': return left <= right
+        if op == '>=': return left >= right
+        if op == '&&': return left and right
+        if op == '||': return left or right
+
+    def exec_UnaryOp(self, node):
+        val = self.execute_node(node['expr'])
+        if node['operator'] == '-': return -val
+        if node['operator'] == '!': return not val
+
+    def exec_Literal(self, node):
+        return node['value']
+
+    def exec_Identifier(self, node):
+        return self.lookup(node['name'])
+
+    def exec_FuncCall(self, node):
+        args = [self.execute_node(arg) for arg in node['args']]
+        return self.call_function(node['name'], args)
+
 # --- Main Entry Point ---
 def compile_code(source_code):
     result = {
@@ -629,11 +820,15 @@ def compile_code(source_code):
         lexer = Lexer(source_code)
         tokens = lexer.tokenize()
         result['phases']['lexer'] = {'tokens': tokens}
+        if lexer.errors:
+            result['errors'].extend(lexer.errors)
         
         # Phase 2
         parser = Parser(tokens)
         ast = parser.parse()
         result['phases']['parser'] = {'ast': ast}
+        if parser.errors:
+            result['errors'].extend(parser.errors)
         
         # Phase 3
         semantic = SemanticAnalyzer(ast)
@@ -658,6 +853,12 @@ def compile_code(source_code):
         asm = codegen.generate()
         result['phases']['codegen'] = {'instructions': asm}
         
+        # Interpreter Execution
+        if not result['errors']:
+            interpreter = Interpreter(ast)
+            output, ret_val = interpreter.execute()
+            result['execution'] = {'output': output, 'return_value': ret_val}
+            
         result['success'] = len(result['errors']) == 0
         
     except CompileError as e:

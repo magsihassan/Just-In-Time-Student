@@ -337,6 +337,7 @@
                 <option value="factorial">Factorial (Recursive)</option>
                 <option value="fibonacci">Fibonacci (Loop)</option>
                 <option value="max">Max of Two</option>
+                <option value="print">Print & Execution Demo</option>
             </select>
             <button id="runBtn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -358,6 +359,7 @@
                 <div class="tab" data-target="tab-tac"><span class="tab-number">4</span> ICG (TAC)</div>
                 <div class="tab" data-target="tab-opt"><span class="tab-number">5</span> Optimizer</div>
                 <div class="tab" data-target="tab-codegen"><span class="tab-number">6</span> Codegen</div>
+                <div class="tab" data-target="tab-exec" style="margin-left: auto; color: var(--success-color);"><span class="tab-number" style="background: var(--success-color); color: var(--bg-color);">▶</span> Execution</div>
             </div>
 
             <!-- Content -->
@@ -383,6 +385,10 @@
 
             <div id="tab-codegen" class="tab-content">
                 <div class="empty-state">Click Compile to generate assembly</div>
+            </div>
+
+            <div id="tab-exec" class="tab-content">
+                <div class="empty-state">Click Compile to execute program</div>
             </div>
         </div>
     </main>
@@ -618,6 +624,26 @@
             container.innerHTML = html;
         };
 
+        const renderExecution = (data) => {
+            const container = document.getElementById('tab-exec');
+            let html = `<div style="background: black; padding: 1.5rem; border-radius: 8px; font-family: 'JetBrains Mono', monospace; color: #4ade80; height: 100%; border: 1px solid var(--border-color);">`;
+            html += `<h3 style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 12px; text-transform: uppercase;">Console Output</h3>`;
+            
+            if(data && data.output && data.output.length > 0) {
+                data.output.forEach(line => {
+                    html += `<div>> ${line}</div>`;
+                });
+            } else {
+                html += `<div style="color: var(--text-secondary);">> (No print output)</div>`;
+            }
+            
+            html += `<br><div style="color: var(--accent-color); border-top: 1px dashed var(--border-color); padding-top: 1rem; margin-top: 1rem;">`;
+            html += `[Program exited with return value: <strong>${data ? data.return_value : 'null'}</strong>]`;
+            html += `</div></div>`;
+            
+            container.innerHTML = html;
+        };
+
         // Compile
         document.getElementById('runBtn').addEventListener('click', async () => {
             const code = editor.getValue();
@@ -654,6 +680,8 @@
                     if(result.phases.tac) renderTAC(result.phases.tac);
                     if(result.phases.optimization) renderOpt(result.phases.optimization);
                     if(result.phases.codegen) renderCodegen(result.phases.codegen);
+                    if(result.execution) renderExecution(result.execution);
+                    else renderExecution(null);
                     
                     // Auto-advance tabs logic (simple visualization)
                     let tIndex = 0;
@@ -661,7 +689,7 @@
                         tabs[tIndex].click();
                         tIndex++;
                         if(tIndex >= tabs.length) clearInterval(advance);
-                    }, 400);
+                    }, 300);
                 }
                 
             } catch (e) {

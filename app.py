@@ -48,6 +48,19 @@ int main() {
 
 int main() {
     return max(42, 100);
+}""",
+    'print': """int main() {
+    int x = 10;
+    int y = 5;
+    
+    print(x);
+    print(y);
+    
+    if (x > y) {
+        print(x + y);
+    }
+    
+    return 0;
 }"""
 }
 
