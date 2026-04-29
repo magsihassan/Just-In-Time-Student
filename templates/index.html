@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JIT Compiler Explorer</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css">
+    <style>
+        :root {
+            --bg-color: #0f0f13;
+            --surface-color: #16161d;
+            --elevated-color: #1c1c26;
+            --accent-color: #6c63ff;
+            --text-primary: #e8e8ed;
+            --text-secondary: #8888a0;
+            --error-color: #ff4d6a;
+            --success-color: #4ade80;
+            --border-color: #2c2c3a;
+            
+            --token-keyword: #ff7b72;
+            --token-ident: #79c0ff;
+            --token-number: #a5d6ff;
+            --token-string: #a5d6ff;
+            --token-operator: #d2a8ff;
+            --token-delim: #8888a0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h1::before {
+            content: "⚡";
+            color: var(--accent-color);
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        select {
+            background-color: var(--elevated-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-family: 'DM Sans', sans-serif;
+            outline: none;
+            cursor: pointer;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 0.5rem 1.5rem;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        button:hover { opacity: 0.9; }
+
+        /* Main Layout */
+        main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .editor-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            background-color: var(--surface-color);
+        }
+
+        .output-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-color);
+            overflow: hidden;
+        }
+
+        /* Editor */
+        .CodeMirror {
+            flex: 1;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            height: auto !important;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 1rem 1.5rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+            background-color: rgba(108, 99, 255, 0.05);
+        }
+
+        .tab-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: var(--elevated-color);
+            font-size: 12px;
+        }
+        .tab.active .tab-number {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: none;
+            animation: fadeSlideIn 0.3s ease;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Typography & Code blocks */
+        pre {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: var(--surface-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow-x: auto;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+        
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-secondary);
+            gap: 1rem;
+        }
+
+        /* Lexer: Token Chips */
+        .token-stream {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .token-chip {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0;
+            animation: fadeIn 0.3s ease forwards;
+        }
+        @keyframes fadeIn { to { opacity: 1; } }
+
+        .token-chip.KEYWORD .val { color: var(--token-keyword); }
+        .token-chip.IDENTIFIER .val { color: var(--token-ident); }
+        .token-chip.NUMBER, .token-chip.FLOAT { color: var(--token-number); }
+        .token-chip.STRING .val { color: var(--token-string); }
+        .token-chip.OPERATOR .val { color: var(--token-operator); }
+        .token-chip.DELIMITER .val { color: var(--token-delim); }
+        
+        .token-type {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        /* Parser: AST simple rendering */
+        .ast-tree {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .ast-node { padding-left: 20px; position: relative; }
+        .ast-node::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            border-left: 1px solid var(--border-color);
+        }
+        .ast-key { color: var(--text-secondary); }
+        .ast-val-string { color: var(--token-string); }
+        .ast-val-number { color: var(--token-number); }
+        .ast-val-keyword { color: var(--token-keyword); }
+
+        /* Semantic: Symbol Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        th {
+            background-color: var(--surface-color);
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 12px;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        /* Errors Panel */
+        .error-panel {
+            background-color: rgba(255, 77, 106, 0.1);
+            border-top: 1px solid rgba(255, 77, 106, 0.3);
+            color: var(--error-color);
+            padding: 1rem 2rem;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            display: none;
+        }
+        .error-panel ul {
+            list-style: none;
+            padding-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        /* Optimizer Diff */
+        .diff-container { display: flex; gap: 1rem; }
+        .diff-pane { flex: 1; }
+        .diff-pane h3 { margin-bottom: 1rem; font-size: 14px; color: var(--text-secondary); }
+        .diff-changes { margin-top: 1rem; }
+        .diff-changes li { 
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; 
+            padding: 4px;
+            margin-bottom: 4px;
+            background: var(--surface-color);
+            border-left: 3px solid var(--accent-color);
+            list-style: none;
+        }
+        
+        /* TAC numbering */
+        .tac-line { display: flex; gap: 1rem; }
+        .tac-num { color: var(--text-secondary); width: 30px; text-align: right; user-select: none; }
+        .tac-inst { color: var(--text-primary); }
+
+        /* SVG AST Tree */
+        #svg-container { width: 100%; height: 100%; min-height: 400px; overflow: auto; background: var(--surface-color); border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>JIT Compiler Explorer</h1>
+        <div class="controls">
+            <select id="sampleSelect">
+                <option value="arithmetic">Simple Arithmetic</option>
+                <option value="factorial">Factorial (Recursive)</option>
+                <option value="fibonacci">Fibonacci (Loop)</option>
+                <option value="max">Max of Two</option>
+            </select>
+            <button id="runBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                Compile
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="editor-pane">
+            <textarea id="editor"></textarea>
+        </div>
+
+        <div class="output-pane">
+            <div class="tabs">
+                <div class="tab active" data-target="tab-lexer"><span class="tab-number">1</span> Lexer</div>
+                <div class="tab" data-target="tab-parser"><span class="tab-number">2</span> Parser</div>
+                <div class="tab" data-target="tab-semantic"><span class="tab-number">3</span> Semantic</div>
+                <div class="tab" data-target="tab-tac"><span class="tab-number">4</span> ICG (TAC)</div>
+                <div class="tab" data-target="tab-opt"><span class="tab-number">5</span> Optimizer</div>
+                <div class="tab" data-target="tab-codegen"><span class="tab-number">6</span> Codegen</div>
+            </div>
+
+            <!-- Content -->
+            <div id="tab-lexer" class="tab-content active">
+                <div class="empty-state">Click Compile to generate tokens</div>
+            </div>
+            
+            <div id="tab-parser" class="tab-content">
+                <div class="empty-state">Click Compile to generate AST</div>
+            </div>
+
+            <div id="tab-semantic" class="tab-content">
+                <div class="empty-state">Click Compile to view symbol table</div>
+            </div>
+
+            <div id="tab-tac" class="tab-content">
+                <div class="empty-state">Click Compile to generate TAC</div>
+            </div>
+
+            <div id="tab-opt" class="tab-content">
+                <div class="empty-state">Click Compile to see optimizations</div>
+            </div>
+
+            <div id="tab-codegen" class="tab-content">
+                <div class="empty-state">Click Compile to generate assembly</div>
+            </div>
+        </div>
+    </main>
+
+    <div id="errorPanel" class="error-panel">
+        <strong>Compilation Errors</strong>
+        <ul id="errorList"></ul>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/clike/clike.min.js"></script>
+    
+    <script>
+        // Init Editor
+        const editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
+            mode: 'text/x-csrc',
+            theme: 'dracula',
+            lineNumbers: true,
+            indentUnit: 4,
+            matchBrackets: true
+        });
+
+        // Tab Switching
+        const tabs = document.querySelectorAll('.tab');
+        const contents = document.querySelectorAll('.tab-content');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                contents.forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.target).classList.add('active');
+            });
+        });
+
+        // Load Sample
+        const sampleSelect = document.getElementById('sampleSelect');
+        const loadSample = async (name) => {
+            try {
+                const res = await fetch(`/samples/${name}`);
+                const data = await res.json();
+                if(data.code) {
+                    editor.setValue(data.code);
+                }
+            } catch(e) { console.error(e); }
+        };
+        sampleSelect.addEventListener('change', (e) => loadSample(e.target.value));
+        
+        // Initial load
+        loadSample('arithmetic');
+
+        // Render functions
+        const renderLexer = (tokens) => {
+            const container = document.getElementById('tab-lexer');
+            container.innerHTML = '<div class="token-stream"></div>';
+            const stream = container.querySelector('.token-stream');
+            
+            tokens.forEach((t, i) => {
+                const chip = document.createElement('div');
+                chip.className = `token-chip ${t.type}`;
+                chip.style.animationDelay = `${i * 10}ms`;
+                
+                chip.innerHTML = `
+                    <span class="token-type">${t.type}</span>
+                    <span class="val">${t.value.replace(/</g, '&lt;')}</span>
+                `;
+                stream.appendChild(chip);
+            });
+        };
+
+        const renderASTText = (node, depth=0) => {
+            if(!node) return '';
+            let html = `<div class="ast-node">`;
+            
+            if(node.type) {
+                html += `<span class="ast-val-keyword">${node.type}</span> `;
+            }
+            
+            for(let key in node) {
+                if(key === 'type') continue;
+                html += `<div><span class="ast-key">${key}:</span> `;
+                const val = node[key];
+                if(Array.isArray(val)) {
+                    html += `[`;
+                    val.forEach(v => html += renderASTText(v, depth+1));
+                    html += `]</div>`;
+                } else if(typeof val === 'object' && val !== null) {
+                    html += renderASTText(val, depth+1) + `</div>`;
+                } else {
+                    let vclass = typeof val === 'number' ? 'ast-val-number' : 'ast-val-string';
+                    html += `<span class="${vclass}">${val}</span></div>`;
+                }
+            }
+            html += `</div>`;
+            return html;
+        };
+
+        const renderParser = (ast) => {
+            const container = document.getElementById('tab-parser');
+            container.innerHTML = `<div class="ast-tree">${renderASTText(ast)}</div>`;
+        };
+
+        const renderSemantic = (data) => {
+            const container = document.getElementById('tab-semantic');
+            let html = `<table>
+                <tr><th>Name</th><th>Type</th><th>Kind</th><th>Scope Depth</th></tr>`;
+            
+            if(data.symbol_table) {
+                data.symbol_table.forEach(s => {
+                    html += `<tr>
+                        <td>${s.name}</td>
+                        <td><span style="color:var(--token-keyword)">${s.type}</span></td>
+                        <td>${s.kind}</td>
+                        <td>${s.depth}</td>
+                    </tr>`;
+                });
+            }
+            html += `</table>`;
+            
+            if(data.errors && data.errors.length > 0) {
+                html += `<div style="margin-top:20px; color:var(--error-color);">`;
+                html += `<h4>Semantic Issues Found:</h4><ul>`;
+                data.errors.forEach(e => html += `<li>${e}</li>`);
+                html += `</ul></div>`;
+            }
+            
+            container.innerHTML = html;
+        };
+
+        const renderTAC = (data) => {
+            const container = document.getElementById('tab-tac');
+            let html = `<pre>`;
+            if(data.instructions) {
+                data.instructions.forEach((inst, i) => {
+                    html += `<div class="tac-line"><span class="tac-num">${i}</span><span class="tac-inst">${inst.replace(/</g, '&lt;')}</span></div>`;
+                });
+            }
+            html += `</pre>`;
+            container.innerHTML = html;
+        };
+
+        const renderOpt = (data) => {
+            const container = document.getElementById('tab-opt');
+            let html = `<div class="diff-container">
+                <div class="diff-pane">
+                    <h3>Before Optimization</h3>
+                    <pre>`;
+            if(data.before) data.before.forEach((inst, i) => html += `<div class="tac-line"><span class="tac-num">${i}</span><span class="tac-inst">${inst.replace(/</g, '&lt;')}</span></div>`);
+            html += `</pre></div>
+                <div class="diff-pane">
+                    <h3>After Optimization</h3>
+                    <pre>`;
+            if(data.after) data.after.forEach((inst, i) => html += `<div class="tac-line"><span class="tac-num">${i}</span><span class="tac-inst">${inst.replace(/</g, '&lt;')}</span></div>`);
+            html += `</pre></div></div>`;
+            
+            if(data.changes && data.changes.length > 0) {
+                html += `<div class="diff-changes"><h3>Changes Applied:</h3><ul>`;
+                data.changes.forEach(c => html += `<li>${c}</li>`);
+                html += `</ul></div>`;
+            } else {
+                html += `<div class="diff-changes">No optimizations applied.</div>`;
+            }
+            
+            container.innerHTML = html;
+        };
+
+        const renderCodegen = (data) => {
+            const container = document.getElementById('tab-codegen');
+            let html = `<pre>`;
+            if(data.instructions) {
+                data.instructions.forEach((inst, i) => {
+                    let color = inst.startsWith(';') ? 'var(--text-secondary)' : 'var(--token-ident)';
+                    if(inst.includes(':')) color = 'var(--token-keyword)';
+                    html += `<div class="tac-line"><span class="tac-num">${i}</span><span class="tac-inst" style="color:${color}">${inst}</span></div>`;
+                });
+            }
+            html += `</pre>`;
+            container.innerHTML = html;
+        };
+
+        // Compile
+        document.getElementById('runBtn').addEventListener('click', async () => {
+            const code = editor.getValue();
+            const btn = document.getElementById('runBtn');
+            const errPanel = document.getElementById('errorPanel');
+            const errList = document.getElementById('errorList');
+            
+            btn.innerHTML = 'Compiling...';
+            btn.disabled = true;
+            errPanel.style.display = 'none';
+            errList.innerHTML = '';
+            
+            try {
+                const res = await fetch('/compile', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({code})
+                });
+                const result = await res.json();
+                
+                if(result.errors && result.errors.length > 0) {
+                    errPanel.style.display = 'block';
+                    result.errors.forEach(e => {
+                        const li = document.createElement('li');
+                        li.textContent = e;
+                        errList.appendChild(li);
+                    });
+                }
+
+                if(result.phases) {
+                    if(result.phases.lexer) renderLexer(result.phases.lexer.tokens);
+                    if(result.phases.parser) renderParser(result.phases.parser.ast);
+                    if(result.phases.semantic) renderSemantic(result.phases.semantic);
+                    if(result.phases.tac) renderTAC(result.phases.tac);
+                    if(result.phases.optimization) renderOpt(result.phases.optimization);
+                    if(result.phases.codegen) renderCodegen(result.phases.codegen);
+                    
+                    // Auto-advance tabs logic (simple visualization)
+                    let tIndex = 0;
+                    const advance = setInterval(() => {
+                        tabs[tIndex].click();
+                        tIndex++;
+                        if(tIndex >= tabs.length) clearInterval(advance);
+                    }, 400);
+                }
+                
+            } catch (e) {
+                errPanel.style.display = 'block';
+                errList.innerHTML = `<li>Failed to connect to server: ${e.message}</li>`;
+            }
+            
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Compile`;
+            btn.disabled = false;
+        });
+
+    </script>
+</body>
+</html>
