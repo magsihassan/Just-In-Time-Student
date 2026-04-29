@@ -103,22 +103,31 @@
             display: flex;
             flex: 1;
             overflow: hidden;
+            padding: 1rem;
+            gap: 1rem;
+            background-color: var(--bg-color);
         }
 
         .editor-pane {
             flex: 1;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid var(--border-color);
-            background-color: var(--surface-color);
+            background-color: #282a36; /* Match Dracula theme */
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .output-pane {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background-color: var(--bg-color);
+            background-color: var(--surface-color);
+            border-radius: 12px;
             overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         /* Editor */
