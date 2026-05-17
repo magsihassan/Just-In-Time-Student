@@ -78,10 +78,11 @@ class Parser:
 
     def consume(self, expected_type=None, expected_value=None):
         tok = self.current()
+        prev_line = self.tokens[self.pos - 1]['line'] if self.pos > 0 else tok['line']
         if expected_type and tok['type'] != expected_type:
-            raise CompileError(f"Syntax Error: Expected type {expected_type}, got {tok['type']} at line {tok['line']}")
+            raise CompileError(f"Syntax Error: Expected type {expected_type}, got {tok['type']} after line {prev_line}")
         if expected_value and tok['value'] != expected_value:
-            raise CompileError(f"Syntax Error: Expected '{expected_value}', got '{tok['value']}' at line {tok['line']}")
+            raise CompileError(f"Syntax Error: Expected '{expected_value}', got '{tok['value']}' after line {prev_line}")
         self.pos += 1
         return tok
 
@@ -862,10 +863,10 @@ def compile_code(source_code):
         # Phase 2
         parser = Parser(tokens)
         ast = parser.parse()
-        result['phases']['parser'] = {'ast': ast}
         if parser.errors:
             result['errors'].extend(parser.errors)
             return result
+        result['phases']['parser'] = {'ast': ast}
         
         # Phase 3
         semantic = SemanticAnalyzer(ast)
