@@ -178,6 +178,23 @@ class LR1Parser:
                                 pass # Reduce-Reduce, favor first rule
                         else:
                             action[state_idx][la] = ('r', nt, ridx, len(rule))
+        
+        self.automaton = {
+            'states': [],
+            'transitions': {}
+        }
+        for state_idx, state in enumerate(states):
+            items_list = []
+            for item in state:
+                nt, ridx, dot, la = item
+                rule = self.Grammar[nt][ridx]
+                items_list.append({'nt': nt, 'rule': rule, 'dot': dot, 'la': la})
+            self.automaton['states'].append(items_list)
+            
+        for (f, sym), t in transitions.items():
+            if str(f) not in self.automaton['transitions']:
+                self.automaton['transitions'][str(f)] = {}
+            self.automaton['transitions'][str(f)][sym] = t
                                 
         return action, goto_table
 
@@ -185,7 +202,7 @@ class LR1Parser:
         try:
             action, goto_table = self.generate_tables()
         except Exception as e:
-            self.errors.append(f"Failed to generate LALR(1) tables: {str(e)}")
+            self.errors.append(f"Failed to generate LR(1) tables: {str(e)}")
             return None
             
         stack = [0]
@@ -219,7 +236,11 @@ class LR1Parser:
                     children.append(sym_stack.pop())
                 children.reverse()
                 
-                node = {'type': 'CSTNode', 'name': nt, 'children': children}
+                # Optimize tree: collapse single-child nodes to reduce depth
+                if len(children) == 1 and nt not in ("Program", "StatementList", "Block", "Statement"):
+                    node = children[0]
+                else:
+                    node = {'type': 'CSTNode', 'name': nt, 'children': children}
                 
                 prev_state = stack[-1]
                 next_state = goto_table[prev_state].get(nt)

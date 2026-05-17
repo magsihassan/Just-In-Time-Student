@@ -397,7 +397,15 @@
             </div>
             
             <div id="tab-parser" class="tab-content">
-                <div class="empty-state">Click Compile to generate AST</div>
+                <div id="parser-toggle-container" style="display: flex; gap: 1rem; margin-bottom: 1rem; justify-content: center; display: none;">
+                    <button id="btn-view-tree" class="tab active" style="padding: 0.5rem 1rem; cursor: pointer; background: var(--surface-color); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">Parse Tree</button>
+                    <button id="btn-view-states" class="tab" style="padding: 0.5rem 1rem; cursor: pointer; background: transparent; border: 1px solid transparent; color: var(--text-secondary); border-radius: 4px;">Parsing Automaton (LR1 States)</button>
+                </div>
+                <div id="parser-tree-view">
+                    <div class="empty-state">Click Compile to generate AST</div>
+                </div>
+                <div id="parser-states-view" style="display: none; height: 100%; overflow: auto;">
+                </div>
             </div>
 
             <div id="tab-semantic" class="tab-content">
@@ -536,9 +544,71 @@
             return { name, children };
         };
 
-        const renderParser = (ast) => {
+        const renderParser = (data) => {
             const container = document.getElementById('tab-parser');
-            container.innerHTML = '<div id="d3-tree" style="width:100%; height:100%; min-height:500px; display:flex; justify-content:center;"></div>';
+            const ast = data.ast;
+            const automaton = data.automaton;
+            
+            const treeView = document.getElementById('parser-tree-view');
+            const statesView = document.getElementById('parser-states-view');
+            const toggleContainer = document.getElementById('parser-toggle-container');
+            
+            treeView.innerHTML = '<div id="d3-tree" style="width:100%; height:100%; min-height:500px; display:flex; justify-content:center;"></div>';
+            
+            if (automaton) {
+                toggleContainer.style.display = 'flex';
+                // Render automaton states
+                let statesHtml = '<div class="states-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; padding: 1rem;">';
+                automaton.states.forEach((state, idx) => {
+                    statesHtml += `<div id="state-${idx}" class="state-card" style="background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
+                        <h3 style="margin-top: 0; color: var(--accent-color); border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">State ${idx}</h3>
+                        <ul style="list-style: none; padding: 0; margin: 0 0 1rem 0; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;">`;
+                    state.forEach(item => {
+                        let ruleStr = item.rule.map((sym, i) => i === item.dot ? `• ${sym}` : sym).join(' ');
+                        if (item.dot === item.rule.length) ruleStr += ' •';
+                        statesHtml += `<li><span style="color: var(--keyword-color)">${item.nt}</span> → ${ruleStr} <span style="color: var(--text-secondary)">{${item.la}}</span></li>`;
+                    });
+                    statesHtml += `</ul>
+                        <div class="transitions" style="border-top: 1px dashed var(--border-color); padding-top: 0.5rem; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">`;
+                    if (automaton.transitions[idx]) {
+                        Object.entries(automaton.transitions[idx]).forEach(([sym, target]) => {
+                            statesHtml += `<div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                <span>On <strong>${sym}</strong></span>
+                                <a href="#state-${target}" onclick="document.getElementById('state-${target}').scrollIntoView({behavior: 'smooth'}); document.getElementById('state-${target}').style.borderColor='var(--accent-color)'; setTimeout(()=>document.getElementById('state-${target}').style.borderColor='var(--border-color)', 2000); return false;" style="color: var(--accent-color); text-decoration: none;">➔ State ${target}</a>
+                            </div>`;
+                        });
+                    }
+                    statesHtml += `</div></div>`;
+                });
+                statesHtml += '</div>';
+                statesView.innerHTML = statesHtml;
+                
+                document.getElementById('btn-view-tree').onclick = (e) => {
+                    treeView.style.display = 'block';
+                    statesView.style.display = 'none';
+                    e.target.style.background = 'var(--surface-color)';
+                    e.target.style.borderColor = 'var(--border-color)';
+                    e.target.style.color = 'var(--text-primary)';
+                    document.getElementById('btn-view-states').style.background = 'transparent';
+                    document.getElementById('btn-view-states').style.borderColor = 'transparent';
+                    document.getElementById('btn-view-states').style.color = 'var(--text-secondary)';
+                };
+                
+                document.getElementById('btn-view-states').onclick = (e) => {
+                    treeView.style.display = 'none';
+                    statesView.style.display = 'block';
+                    e.target.style.background = 'var(--surface-color)';
+                    e.target.style.borderColor = 'var(--border-color)';
+                    e.target.style.color = 'var(--text-primary)';
+                    document.getElementById('btn-view-tree').style.background = 'transparent';
+                    document.getElementById('btn-view-tree').style.borderColor = 'transparent';
+                    document.getElementById('btn-view-tree').style.color = 'var(--text-secondary)';
+                };
+            } else {
+                toggleContainer.style.display = 'none';
+                treeView.style.display = 'block';
+                statesView.style.display = 'none';
+            }
             
             const treeData = convertToD3Hierarchy(ast);
             if(!treeData) return;

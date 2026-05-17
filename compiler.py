@@ -868,7 +868,7 @@ def compile_code(source_code, parser_type='recursive'):
             if lr_parser.errors:
                 result['errors'].extend(lr_parser.errors)
                 return result
-            result['phases']['parser'] = {'ast': cst}
+            result['phases']['parser'] = {'ast': cst, 'automaton': lr_parser.automaton}
             
             # Silent fallback to Recursive Descent to get the standard AST for semantic phase
             rd_parser = Parser(tokens)

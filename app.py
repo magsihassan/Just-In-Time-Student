@@ -5,12 +5,7 @@ app = Flask(__name__)
 
 # Sample programs
 SAMPLES = {
-    'arithmetic': """int main() {
-    int a = 10;
-    int b = 20;
-    int c = a + b * 2;
-    return c;
-}""",
+    'arithmetic': """int a = 10;""",
     'factorial': """int factorial(int n) {
     if (n <= 1) {
         return 1;
