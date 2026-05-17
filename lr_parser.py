@@ -4,8 +4,9 @@ class CompileError(Exception):
     pass
 
 class LR1Parser:
-    def __init__(self, tokens):
+    def __init__(self, tokens, is_lalr=False):
         self.tokens = tokens
+        self.is_lalr = is_lalr
         self.errors = []
         self.Grammar = {
             "S'": [["Program"]],
@@ -145,6 +146,34 @@ class LR1Parser:
                     states.append(next_state)
                     q.append(state_map[next_state])
                 transitions[(curr_idx, sym)] = state_map[next_state]
+                
+        # LALR Merging
+        if self.is_lalr:
+            core_map = {}
+            for i, state in enumerate(states):
+                core = frozenset((nt, ridx, dot) for nt, ridx, dot, la in state)
+                if core not in core_map:
+                    core_map[core] = []
+                core_map[core].append(i)
+                
+            merged_states = []
+            merged_state_map = {}
+            for core, indices in core_map.items():
+                new_idx = len(merged_states)
+                merged_items = set()
+                for idx in indices:
+                    merged_items |= states[idx]
+                    merged_state_map[idx] = new_idx
+                merged_states.append(frozenset(merged_items))
+                
+            states = merged_states
+            
+            lalr_transitions = {}
+            for (f, sym), t in transitions.items():
+                new_f = merged_state_map[f]
+                new_t = merged_state_map[t]
+                lalr_transitions[(new_f, sym)] = new_t
+            transitions = lalr_transitions
                 
         # Build ACTION and GOTO tables
         action = [{} for _ in states]

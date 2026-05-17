@@ -862,8 +862,8 @@ def compile_code(source_code, parser_type='recursive'):
             return result
         
         # Phase 2
-        if parser_type == 'lr1':
-            lr_parser = LR1Parser(tokens)
+        if parser_type in ('lr1', 'lalr'):
+            lr_parser = LR1Parser(tokens, is_lalr=(parser_type == 'lalr'))
             cst = lr_parser.parse()
             if lr_parser.errors:
                 result['errors'].extend(lr_parser.errors)
