@@ -857,7 +857,7 @@
 
                 if(result.phases) {
                     if(result.phases.lexer) renderLexer(result.phases.lexer.tokens);
-                    if(result.phases.parser) renderParser(result.phases.parser.ast);
+                    if(result.phases.parser) renderParser(result.phases.parser);
                     if(result.phases.semantic) renderSemantic(result.phases.semantic);
                     if(result.phases.tac) renderTAC(result.phases.tac);
                     if(result.phases.optimization) renderOpt(result.phases.optimization);
