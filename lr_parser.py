@@ -178,24 +178,6 @@ class LR1Parser:
                                 pass # Reduce-Reduce, favor first rule
                         else:
                             action[state_idx][la] = ('r', nt, ridx, len(rule))
-        
-        self.automaton = {
-            'states': [],
-            'transitions': {}
-        }
-        for state_idx, state in enumerate(states):
-            items_list = []
-            for item in state:
-                nt, ridx, dot, la = item
-                rule = self.Grammar[nt][ridx]
-                items_list.append({'nt': nt, 'rule': rule, 'dot': dot, 'la': la})
-            self.automaton['states'].append(items_list)
-            
-        for (f, sym), t in transitions.items():
-            if str(f) not in self.automaton['transitions']:
-                self.automaton['transitions'][str(f)] = {}
-            self.automaton['transitions'][str(f)][sym] = t
-                                
         return action, goto_table
 
     def parse(self):
