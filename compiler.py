@@ -1,6 +1,7 @@
 import re
 import json
 from lr_parser import LR1Parser
+from ll_parser import LL1Parser
 
 class CompileError(Exception):
     pass
@@ -862,11 +863,18 @@ def compile_code(source_code, parser_type='recursive'):
             return result
         
         # Phase 2
-        if parser_type in ('lr1', 'lalr'):
+        if parser_type in ('clr1', 'lalr'):
             lr_parser = LR1Parser(tokens, is_lalr=(parser_type == 'lalr'))
             cst = lr_parser.parse()
             if lr_parser.errors:
                 result['errors'].extend(lr_parser.errors)
+                return result
+            result['phases']['parser'] = {'ast': cst}
+        elif parser_type == 'll1':
+            ll_parser = LL1Parser(tokens)
+            cst = ll_parser.parse()
+            if ll_parser.errors:
+                result['errors'].extend(ll_parser.errors)
                 return result
             result['phases']['parser'] = {'ast': cst}
             
