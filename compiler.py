@@ -1,5 +1,6 @@
 import re
 import json
+from lr_parser import LR1Parser
 
 class CompileError(Exception):
     pass
@@ -844,7 +845,7 @@ class Interpreter:
         return self.call_function(node['name'], args)
 
 # --- Main Entry Point ---
-def compile_code(source_code):
+def compile_code(source_code, parser_type='recursive'):
     result = {
         'success': False,
         'phases': {},
@@ -861,12 +862,27 @@ def compile_code(source_code):
             return result
         
         # Phase 2
-        parser = Parser(tokens)
-        ast = parser.parse()
-        if parser.errors:
-            result['errors'].extend(parser.errors)
-            return result
-        result['phases']['parser'] = {'ast': ast}
+        if parser_type == 'lr1':
+            lr_parser = LR1Parser(tokens)
+            cst = lr_parser.parse()
+            if lr_parser.errors:
+                result['errors'].extend(lr_parser.errors)
+                return result
+            result['phases']['parser'] = {'ast': cst}
+            
+            # Silent fallback to Recursive Descent to get the standard AST for semantic phase
+            rd_parser = Parser(tokens)
+            ast = rd_parser.parse()
+            if rd_parser.errors:
+                result['errors'].extend(rd_parser.errors)
+                return result
+        else:
+            parser = Parser(tokens)
+            ast = parser.parse()
+            if parser.errors:
+                result['errors'].extend(parser.errors)
+                return result
+            result['phases']['parser'] = {'ast': ast}
         
         # Phase 3
         semantic = SemanticAnalyzer(ast)

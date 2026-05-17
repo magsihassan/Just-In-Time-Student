@@ -75,7 +75,8 @@ def compile_endpoint():
         return jsonify({'error': 'No code provided'}), 400
         
     code = data['code']
-    result = compile_code(code)
+    parser_type = data.get('parserType', 'recursive')
+    result = compile_code(code, parser_type=parser_type)
     return jsonify(result)
 
 @app.route('/samples/<name>')

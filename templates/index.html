@@ -357,6 +357,10 @@
     <header>
         <h1>JIT Compiler Explorer</h1>
         <div class="controls">
+            <select id="parserSelect">
+                <option value="recursive">Recursive Descent</option>
+                <option value="lr1">LR(1) Bottom-Up</option>
+            </select>
             <select id="sampleSelect">
                 <option value="arithmetic">Simple Arithmetic</option>
                 <option value="factorial">Factorial (Recursive)</option>
@@ -764,10 +768,11 @@
             errList.innerHTML = '';
             
             try {
+                const parserType = document.getElementById('parserSelect').value;
                 const res = await fetch('/compile', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({code})
+                    body: JSON.stringify({code, parserType})
                 });
                 const result = await res.json();
                 
