@@ -857,6 +857,7 @@ def compile_code(source_code):
         result['phases']['lexer'] = {'tokens': tokens}
         if lexer.errors:
             result['errors'].extend(lexer.errors)
+            return result
         
         # Phase 2
         parser = Parser(tokens)
@@ -864,6 +865,7 @@ def compile_code(source_code):
         result['phases']['parser'] = {'ast': ast}
         if parser.errors:
             result['errors'].extend(parser.errors)
+            return result
         
         # Phase 3
         semantic = SemanticAnalyzer(ast)
@@ -871,7 +873,7 @@ def compile_code(source_code):
         result['phases']['semantic'] = {'symbol_table': sym_table, 'errors': sem_errors}
         if sem_errors and any("Error" in e for e in sem_errors):
             result['errors'].extend(sem_errors)
-            # Proceeding anyway for demonstration
+            return result
             
         # Phase 4
         icg = ICGGenerator(ast)
