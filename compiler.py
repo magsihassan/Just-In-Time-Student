@@ -877,13 +877,6 @@ def compile_code(source_code, parser_type='recursive'):
                 result['errors'].extend(ll_parser.errors)
                 return result
             result['phases']['parser'] = {'ast': cst}
-            
-            # Silent fallback to Recursive Descent to get the standard AST for semantic phase
-            rd_parser = Parser(tokens)
-            ast = rd_parser.parse()
-            if rd_parser.errors:
-                result['errors'].extend(rd_parser.errors)
-                return result
         else:
             parser = Parser(tokens)
             ast = parser.parse()
@@ -891,6 +884,14 @@ def compile_code(source_code, parser_type='recursive'):
                 result['errors'].extend(parser.errors)
                 return result
             result['phases']['parser'] = {'ast': ast}
+            
+        if parser_type != 'recursive':
+            # Silent fallback to Recursive Descent to get the standard AST for semantic phase
+            rd_parser = Parser(tokens)
+            ast = rd_parser.parse()
+            if rd_parser.errors:
+                result['errors'].extend(rd_parser.errors)
+                return result
         
         # Phase 3
         semantic = SemanticAnalyzer(ast)
